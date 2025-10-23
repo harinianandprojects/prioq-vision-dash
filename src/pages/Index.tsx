@@ -1,48 +1,16 @@
 import { useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { AlertCard } from "@/components/AlertCard";
-import { CustomerCard } from "@/components/CustomerCard";
-import { mockAlerts, mockCustomers } from "@/data/mockData";
+import { CustomerDetectionAlert } from "@/components/CustomerDetectionAlert";
+import { useCustomerDetection } from "@/hooks/useCustomerDetection";
 import { useToast } from "@/hooks/use-toast";
-import { Bell, TrendingUp, Users, AlertTriangle } from "lucide-react";
+import { Bell, TrendingUp, Users, AlertTriangle, Search, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 const Index = () => {
   const [activeView, setActiveView] = useState("alerts");
-  const [alerts, setAlerts] = useState(mockAlerts);
+  const [searchQuery, setSearchQuery] = useState("");
+  const { alerts, loading } = useCustomerDetection();
   const { toast } = useToast();
-
-  const handleAcknowledge = (id: string) => {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === id ? { ...alert, acknowledged: true } : alert
-    ));
-    toast({
-      title: "Alert Acknowledged",
-      description: "The alert has been marked as acknowledged.",
-    });
-  };
-
-  const handleSnooze = (id: string) => {
-    toast({
-      title: "Alert Snoozed",
-      description: "Alert will reappear in 30 minutes.",
-    });
-  };
-
-  const handleFalsePositive = (id: string) => {
-    setAlerts(prev => prev.filter(alert => alert.id !== id));
-    toast({
-      title: "Marked as False Positive",
-      description: "Feedback sent to training pipeline. Alert removed.",
-      variant: "destructive",
-    });
-  };
-
-  const handleViewDetails = (customerId: string) => {
-    toast({
-      title: "Customer Details",
-      description: `Opening profile for ${customerId}`,
-    });
-  };
 
   const handleLogout = () => {
     toast({
@@ -51,11 +19,22 @@ const Index = () => {
     });
   };
 
+  const filteredAlerts = alerts.filter(alert => {
+    const query = searchQuery.toLowerCase();
+    return (
+      alert.customer_id.toLowerCase().includes(query) ||
+      alert.customer.first_name.toLowerCase().includes(query) ||
+      alert.customer.last_name.toLowerCase().includes(query) ||
+      alert.customer.email?.toLowerCase().includes(query) ||
+      alert.customer.phone_number?.includes(query)
+    );
+  });
+
   const stats = [
-    { label: "Active Alerts", value: alerts.filter(a => !a.acknowledged).length, icon: AlertTriangle, color: "text-destructive" },
-    { label: "Total Customers", value: mockCustomers.length, icon: Users, color: "text-primary" },
-    { label: "HNW Clients", value: mockCustomers.filter(c => c.hnw_status === "High Net Worth").length, icon: TrendingUp, color: "text-success" },
-    { label: "Pending Tickets", value: mockCustomers.reduce((sum, c) => sum + (c.tickets || 0), 0), icon: Bell, color: "text-warning" },
+    { label: "Active Alerts", value: alerts.length, icon: AlertTriangle, color: "text-destructive" },
+    { label: "HNW Detections", value: alerts.filter(a => a.classification === "HNW").length, icon: TrendingUp, color: "text-success" },
+    { label: "Aged Detections", value: alerts.filter(a => a.classification === "Aged").length, icon: Users, color: "text-warning" },
+    { label: "Total Detections", value: alerts.length, icon: Bell, color: "text-primary" },
   ];
 
   return (
@@ -83,51 +62,48 @@ const Index = () => {
       {activeView === "alerts" && (
         <div>
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-foreground mb-2">Real-Time Alerts</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Real-Time Customer Detection</h2>
             <p className="text-muted-foreground">
-              Customer alerts based on HNW status, age, and emotional state detection
+              Live alerts when customers enter the branch - automatically classified by HNW status, age, and priority
             </p>
           </div>
 
-          <div className="space-y-4">
-            {alerts.length === 0 && (
-              <div className="bg-card rounded-lg p-12 text-center shadow-card">
-                <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-lg text-muted-foreground">No active alerts</p>
-              </div>
-            )}
-            {alerts.map(alert => (
-              <AlertCard
-                key={alert.id}
-                alert={alert}
-                onAcknowledge={handleAcknowledge}
-                onSnooze={handleSnooze}
-                onFalsePositive={handleFalsePositive}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Customers View */}
-      {activeView === "customers" && (
-        <div>
+          {/* Search Bar */}
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-foreground mb-2">Customer Directory</h2>
-            <p className="text-muted-foreground">
-              Complete customer profiles with account details and interaction history
-            </p>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by customer name, ID, phone, or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {mockCustomers.map(customer => (
-              <CustomerCard
-                key={customer.customer_id}
-                customer={customer}
-                onViewDetails={handleViewDetails}
-              />
-            ))}
-          </div>
+          {loading ? (
+            <div className="bg-card rounded-lg p-12 text-center shadow-card">
+              <Loader2 className="h-12 w-12 text-primary mx-auto mb-4 animate-spin" />
+              <p className="text-lg text-muted-foreground">Loading detection events...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredAlerts.length === 0 && (
+                <div className="bg-card rounded-lg p-12 text-center shadow-card">
+                  <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-lg text-muted-foreground">
+                    {searchQuery ? "No matching detection events" : "No detection events yet"}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Detection events will appear here in real-time when customers enter the branch
+                  </p>
+                </div>
+              )}
+              {filteredAlerts.map(alert => (
+                <CustomerDetectionAlert key={alert.id} alert={alert} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -137,54 +113,72 @@ const Index = () => {
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-foreground mb-2">Dashboard Overview</h2>
             <p className="text-muted-foreground">
-              Complete snapshot of PrioQ operations and customer analytics
+              Real-time snapshot of customer detection analytics
             </p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent Alerts */}
+            {/* Recent Detections */}
             <div className="bg-card rounded-lg p-6 shadow-card border border-border">
-              <h3 className="text-lg font-semibold text-card-foreground mb-4">Recent Alerts</h3>
-              <div className="space-y-3">
-                {alerts.slice(0, 3).map(alert => (
-                  <div key={alert.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <div>
-                      <p className="font-medium text-card-foreground">{alert.customer_name}</p>
-                      <p className="text-sm text-muted-foreground">{alert.category}</p>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      alert.priority === "critical" ? "bg-destructive text-destructive-foreground" : 
-                      alert.priority === "high" ? "bg-warning text-warning-foreground" : 
-                      "bg-primary text-primary-foreground"
-                    }`}>
-                      {alert.priority}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* HNW Customers */}
-            <div className="bg-card rounded-lg p-6 shadow-card border border-border">
-              <h3 className="text-lg font-semibold text-card-foreground mb-4">High Net Worth Customers</h3>
-              <div className="space-y-3">
-                {mockCustomers
-                  .filter(c => c.hnw_status === "High Net Worth")
-                  .map(customer => (
-                    <div key={customer.customer_id} className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                      <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
-                        <span className="text-sm font-bold text-primary-foreground">
-                          {customer.first_name[0]}{customer.last_name[0]}
-                        </span>
-                      </div>
+              <h3 className="text-lg font-semibold text-card-foreground mb-4">Recent Detections</h3>
+              {loading ? (
+                <div className="text-center py-4">
+                  <Loader2 className="h-8 w-8 text-primary mx-auto animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {alerts.slice(0, 5).map(alert => (
+                    <div key={alert.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                       <div>
                         <p className="font-medium text-card-foreground">
-                          {customer.first_name} {customer.last_name}
+                          {alert.customer.first_name} {alert.customer.last_name}
                         </p>
-                        <p className="text-sm text-muted-foreground">RM: {customer.rm_assigned}</p>
+                        <p className="text-sm text-muted-foreground">{alert.customer_id}</p>
                       </div>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        alert.classification === "HNW" ? "bg-success text-success-foreground" : 
+                        alert.classification === "Aged" ? "bg-warning text-warning-foreground" : 
+                        "bg-primary text-primary-foreground"
+                      }`}>
+                        {alert.classification}
+                      </span>
                     </div>
                   ))}
+                  {alerts.length === 0 && (
+                    <p className="text-center text-muted-foreground py-4">No detections yet</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Classification Breakdown */}
+            <div className="bg-card rounded-lg p-6 shadow-card border border-border">
+              <h3 className="text-lg font-semibold text-card-foreground mb-4">Detection Classification</h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-success flex items-center justify-center">
+                      <TrendingUp className="h-5 w-5 text-success-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-card-foreground">High Net Worth</p>
+                      <p className="text-sm text-muted-foreground">Priority customers</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold">{alerts.filter(a => a.classification === "HNW").length}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-warning flex items-center justify-center">
+                      <Users className="h-5 w-5 text-warning-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-card-foreground">Aged Customers</p>
+                      <p className="text-sm text-muted-foreground">Senior citizens (60+)</p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-bold">{alerts.filter(a => a.classification === "Aged").length}</span>
+                </div>
               </div>
             </div>
           </div>
